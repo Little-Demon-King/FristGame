@@ -8,20 +8,22 @@
 
 | 目标 | 落地方式 |
 |------|------------|
-| 低耦合、高内聚 | 跨模块依赖 `contracts` 与事件契约；协调用 `mediators` / `event_bus`，避免场景脚本互相硬引用 |
+| 低耦合、高内聚 | 跨模块依赖 `architecture/contracts` 与事件契约；协调用 `mediators` / `event_bus` |
 | 数据与表现分离 | 数值与表：`data/`、`resources/configs/`；表现：`scenes/`；行为：`scripts/game/` + `core` |
-| 适配 Godot 常规结构 | 主场景在 **`bootstrap/`**；Autoload 在 **`scripts/autoload/`** 顶层；不做 DDD 四层目录 |
+| 架构与业务解耦 | 模式与基础设施在 **`scripts/core/`**；**全局业务枚举与常量**在 **`scripts/common/`** |
+| 适配 Godot 常规结构 | 主场景 **`bootstrap/`**；Autoload **`scripts/autoload/`**（含原「全局管理器」职责的拆分单例脚本） |
 | 兼顾 C# | 命名空间与 `scripts/` 目录层级一致；`presentation_patterns/mvvm` 服务 UI 绑定习惯 |
-| 可长期演进 | 配置与存档带版本；分包与热更清单独立；调试与日志统一入口 |
+| 可长期演进 | 配置与存档带版本；分包与热更清单独立；调试统一入口 |
 
 ---
 
-## 2. 路径歧义说明（必读）
+## 2. 路径说明（必读）
 
 | 路径 | 性质 | 用途 |
 |------|------|------|
-| **`res://resources/`** | Godot 约定资源根 | `.tres` / `.res` 等序列化资源；子目录 **`configs/`** 存配置型 Resource 与表解析结果 |
-| **`res://scripts/resources/`** | 逻辑代码目录 | 分包加载、热更新管线、远程缓存策略等与 **引擎资源根** 无关，禁止与前者混称 |
+| **`res://resources/`** | Godot 约定资源根 | `.tres` / `.res`；子目录 **`configs/`** 存配置型 Resource |
+| **`res://scripts/resource_loader/`** | 逻辑代码 | 分包、热更、远程缓存加载管线（**不与**根目录 `resources/` 同名，避免混淆） |
+| **`res://assets/materials/`** | 美术资源 | **2D / 3D 共用**材质与着色资源归口（不再使用 `assets/3d/materials/`） |
 
 ---
 
@@ -29,10 +31,10 @@
 
 ```
 FristGame/
-├── bootstrap/                                   # 唯一启动入口：主场景；可选挂载全局调试、DI 组合根
-├── addons/                                      # 引擎插件目录（固定名）
-│   └── plugin_modules/                          # 按契约加载的业务/功能插件包宿主（非引擎本体）
-├── assets/                                      # 美术与媒体统一归口；.import 由引擎维护
+├── bootstrap/                                   # 唯一启动入口：主场景；全局装配
+├── addons/
+│   └── plugin_modules/                          # 契约化功能插件宿主
+├── assets/                                      # 美术与媒体统一归口
 │   ├── 2d/
 │   │   ├── textures/                            # 通用贴图、精灵表、UI 图素
 │   │   ├── sprites/                             # 按对象拆分的精灵源
@@ -40,205 +42,232 @@ FristGame/
 │   │   └── vfx/                                 # 粒子与全屏特效用图
 │   ├── 3d/
 │   │   ├── meshes/                              # 模型源（如 .glb）
-│   │   ├── textures/                            # 3D 贴图
-│   │   └── materials/                           # 3D 材质资源
+│   │   └── textures/                            # 3D 贴图（材质统一见 assets/materials/）
 │   ├── audio/
 │   │   ├── sfx/                                 # 短音效
-│   │   └── music/                               # BGM、章节音乐
+│   │   └── music/                               # BGM
 │   ├── fonts/                                   # 字体
 │   ├── animations/                              # AnimationLibrary 等共享动画资源
-│   ├── materials/                               # CanvasItemMaterial / ShaderMaterial 等
-│   └── prefabs/                                 # 可复用场景片段（与 scenes 内实例配合）
+│   ├── materials/                               # 2D/3D 材质与 ShaderMaterial（全项目唯一材质归口）
+│   └── prefabs/                                 # 可复用场景片段资源
 ├── data/
-│   ├── config_tables/                           # 配置表源文件（csv/json 等）
-│   └── pack_manifests/                          # 分包与热更清单（包 id、依赖、哈希、URL 模板）
+│   ├── config_tables/                           # 配置表源
+│   └── pack_manifests/                          # 分包与热更清单
 ├── localization/
-│   └── locales/                                 # 翻译资源（.po、.csv 等）
-├── resources/                                   # Godot 序列化资源根（引擎约定目录名）
-│   └── configs/                                 # Resource 配置、表解析后的 .tres/.res
-├── scenes/                                      # 游戏内场景（不含 bootstrap）
-│   ├── levels/                                  # 关卡 / 地图
+│   └── locales/                                 # 翻译文件
+├── resources/
+│   └── configs/                                 # Resource 配置与表解析结果
+├── scenes/                                      # 游戏内场景（与 scripts/game 子域一一镜像）
 │   ├── characters/                              # 玩家、NPC 根场景
 │   ├── enemies/                                 # 敌人根场景
 │   ├── items/                                   # 拾取物、机关、交互物
-│   ├── ui/                                      # 菜单、HUD、弹窗
-│   ├── vfx/                                     # 纯表现场景
-│   └── presentation/                            # 大型 UI/表现组合壳（可选）
+│   ├── levels/                                  # 关卡 / 地图场景
+│   ├── ui/                                      # 菜单、HUD、弹窗、大型 UI 壳（子目录或独立 .tscn）
+│   └── vfx/                                     # 纯表现场景
 ├── scripts/
-│   ├── autoload/                                # Autoload 脚本：全局单例，薄层装配与转发
+│   ├── autoload/                                # Autoload：全局单例；音频 / 场景流 / 输入等一脚本一职责
+│   ├── common/
+│   │   ├── enums/                               # 全局业务枚举
+│   │   └── constants/                           # 全局业务常量
 │   ├── core/
-│   │   ├── state_machine/                       # 状态机：状态基类、转换、共享上下文
-│   │   ├── components/                        # 组件化：组件接口、组合根、生命周期适配
-│   │   ├── event_bus/                         # 事件总线：订阅、通道、调试钩子
-│   │   ├── object_pool/                       # 对象池：策略、节点池、池化对象契约
-│   │   ├── dependency_injection/              # DI：容器、注册表、作用域（与 bootstrap/autoload 协作）
-│   │   ├── contracts/                         # 接口与抽象：跨模块唯一稳定依赖面
-│   │   ├── commands/                          # 命令模式：命令对象、撤销/重做、批处理
-│   │   ├── mediators/                         # 中介者：跨系统编排，减少 UI↔玩法 直连
-│   │   ├── enums_and_constants/               # 枚举、常量、分组常量，禁止魔法数散落
-│   │   └── modular_plugins/                   # 插件模块契约：发现、加载、启停生命周期
-│   ├── managers/                                # 全局管理器拆分：音频、输入、场景流、时间缩放等
+│   │   ├── architecture/                        # 可复用模式与横切基础设施
+│   │   │   ├── state_machine/
+│   │   │   ├── components/
+│   │   │   ├── event_bus/
+│   │   │   ├── object_pool/
+│   │   │   ├── dependency_injection/
+│   │   │   ├── contracts/
+│   │   │   ├── commands/
+│   │   │   ├── mediators/
+│   │   │   └── modular_plugins/
+│   │   └── global_base/                         # 仅基类：见 §10，禁止枚举 / 常量 / 业务逻辑
 │   ├── configuration/
-│   │   ├── runtime/                           # 运行时配置模型、合并结果、只读快照
-│   │   └── hot_reload/                        # 表变更监听、校验失败回滚、通知订阅方
+│   │   ├── runtime/                             # 运行时配置模型与快照
+│   │   └── hot_reload/                          # 配置表热重载
 │   ├── persistence/
-│   │   ├── saves/                             # 存档序列化、槽位、元数据
-│   │   └── migrations/                        # 存档版本迁移，保证旧档可读
-│   ├── localization/                          # 本地化服务：键规约、回退语言、与 locales 绑定
-│   ├── debug/                                   # 全局日志（级别/分类/输出器）与未捕获异常处理
-│   ├── resources/                               # 分包、热更、远程缓存（代码，非根 resources/）
-│   │   ├── packs/                             # 分包加载、依赖解析，消费 pack_manifests
-│   │   └── remote_cache/                      # 下载、校验、user:// 缓存路径与清理策略
+│   │   ├── saves/                               # 存档读写
+│   │   └── migrations/                          # 存档版本迁移
+│   ├── localization/                            # 本地化服务代码
+│   ├── debug/                                   # 全局日志与异常
+│   ├── resource_loader/
+│   │   ├── packs/                               # 分包加载
+│   │   └── remote_cache/                        # 远程补丁与缓存策略
 │   ├── presentation_patterns/
-│   │   ├── mvc/                               # MVC 基类与约定
-│   │   └── mvvm/                              # ViewModel、绑定适配（C# 友好）
+│   │   ├── mvc/
+│   │   └── mvvm/
 │   ├── utilities/
-│   │   └── extensions/                        # 数学、路径、集合、Node 安全扩展等工具
-│   └── game/
-│       ├── characters/                        # 与 scenes/characters 对应的业务脚本
-│       ├── enemies/                           # 与 scenes/enemies 对应
-│       ├── items/                             # 与 scenes/items 对应
-│       ├── levels/                            # 与 scenes/levels 对应
-│       └── ui/                                # 与 scenes/ui 对应
+│   │   ├── extensions/                          # 引擎 API / 原生类型扩展方法
+│   │   └── helpers/                             # 数学、字符串、随机、业务无关纯函数工具
+│   └── game/                                    # 业务脚本（与 scenes 子域同名同层级）
+│       ├── characters/                          # 对应 scenes/characters/
+│       ├── enemies/                             # 对应 scenes/enemies/
+│       ├── items/                               # 对应 scenes/items/
+│       ├── levels/                              # 对应 scenes/levels/
+│       ├── ui/                                  # 对应 scenes/ui/
+│       └── vfx/                                 # 对应 scenes/vfx/
 ├── tests/
-│   ├── unit/                                  # 纯逻辑、core、无头依赖测试
-│   └── integration/                           # 场景级、事件总线、存档与 IO 集成测试
+│   ├── unit/
+│   └── integration/
 ├── docs/
-│   └── ARCHITECTURE.md                        # 本文件
+│   └── ARCHITECTURE.md
 ├── project.godot
 ├── icon.svg
-└── PROJECT_STRUCTURE.md                       # 结构速览与文档入口
+└── PROJECT_STRUCTURE.md
 ```
 
-**场景与脚本对应**：`scenes/<域>/` 与 `scripts/game/<域>/` 成对扩展，避免业务脚本散落在 `scripts/` 根下。
+### 3.1 场景与脚本镜像（对齐维护）
+
+| `scenes/` | `scripts/game/` |
+|-----------|-----------------|
+| `scenes/characters/` | `scripts/game/characters/` |
+| `scenes/enemies/` | `scripts/game/enemies/` |
+| `scenes/items/` | `scripts/game/items/` |
+| `scenes/levels/` | `scripts/game/levels/` |
+| `scenes/ui/` | `scripts/game/ui/` |
+| `scenes/vfx/` | `scripts/game/vfx/` |
+
+新增域时两边同步加同名子目录；查找、维护、复用路径一致。
 
 ---
 
 ## 4. 启动与全局生命周期
 
-1. **`project.godot`**：`application/run/main_scene` → **`res://bootstrap/main.tscn`**。  
-2. **`bootstrap/`**：负责最早期的组合（可选：注册 DI、挂接 `debug` 里日志/异常处理器、拉取首包配置）。  
-3. **`scripts/autoload/`**：Project Settings → Autoload 指向的脚本；**仅做**解析、注册、生命周期转发，**不写**大块业务逻辑。  
-4. **`scripts/managers/`**：可具体实现的单职责全局服务（音频、输入等），由 Autoload 或 DI 持有接口实现。
+1. **`project.godot`**：`run/main_scene` → **`res://bootstrap/main.tscn`**。  
+2. **`bootstrap/`**：最早组合（DI、调试钩子、首包配置等）。  
+3. **`scripts/autoload/`**：每个 Autoload 脚本 **单一职责**；原独立 `managers/` 中的能力（音频、输入、场景流等）以 **多个 Autoload 单例脚本** 或 **同一装配脚本内组合多个小管理器类型** 形式存在于此目录，**禁止**单文件上帝类。  
+4. **`scripts/core/architecture/`**：可被 Autoload 与 `game` 引用的模式实现；**不**写具体关卡剧情数值。
 
 ---
 
 ## 5. 数据流（配置表驱动 + 热重载）
 
 ```
-data/config_tables/（源表）
-        ↓ 加载 / 校验
-scripts/configuration/runtime/（运行时只读模型）
-        ↓ 可选序列化快照
-resources/configs/（.tres 等 Resource 实例）
-        ↓ 供读
-scripts/game/* 与 scenes/*（表现与玩法，只读配置接口）
+data/config_tables/
+        ↓
+scripts/configuration/runtime/
+        ↓
+resources/configs/
+        ↓
+scripts/game/* 与 scenes/*
 ```
 
-- **`scripts/configuration/hot_reload/`**：监听 `data/config_tables/` 变更 → 重新校验 → 更新 `runtime` 快照 → 通过事件或接口通知订阅方；失败时回滚并保持上次一致快照。  
-- **禁止**：在 UI 或角色脚本内直接解析 csv 路径字符串；统一走 configuration 管线。
+热重载、禁止直读表路径等约定不变，见 `scripts/configuration/hot_reload/`。
 
 ---
 
 ## 6. 持久化与版本
 
-- **`scripts/persistence/saves/`**：写入/读取用户数据；头信息中带 **格式版本号**。  
-- **`scripts/persistence/migrations/`**：按版本链式迁移；新增字段用默认值补全，**禁止**静默改变旧字段语义。  
-- 与配置表版本独立：存档版本只描述存档 blob，不替代 `data/config_tables` 的表版本字段。
+- **`scripts/persistence/saves/`**、**`migrations/`**：版本头与链式迁移；规则同前。
 
 ---
 
 ## 7. 分包与热更新
 
-- **`data/pack_manifests/`**：描述包列表、依赖、校验信息、远程基地址模板。  
-- **`scripts/resources/packs/`**：根据清单加载 PCK/补丁、解析依赖顺序、与 Godot 加载 API 对接。  
-- **`scripts/resources/remote_cache/`**：下载、哈希校验、`user://` 下缓存目录约定与清理；不提交用户缓存到版本库。
+- **`data/pack_manifests/`**  
+- **`scripts/resource_loader/packs/`**、**`remote_cache/`**：加载、依赖、下载与 `user://` 缓存策略。
 
 ---
 
 ## 8. 本地化
 
-- **`localization/locales/`**：各语言翻译文件。  
-- **`scripts/localization/`**：`TranslationServer` 封装、键命名规范、缺键回退、占位符替换；**不**在控件脚本内硬编码长句。
+- **`localization/locales/`** + **`scripts/localization/`**
 
 ---
 
 ## 9. 调试（日志 + 异常）
 
-- **`scripts/debug/`**：分级日志、分类（渠道）、输出目标（文件/控制台/远程）；以及全局未捕获异常回调、致命错误提示与上报钩子。  
-- **注册点**：在 **`bootstrap`** 最早阶段或 **Autoload** 初始化中完成，保证后续系统可安全打日志。
+- **`scripts/debug/`**；在 `bootstrap` / Autoload 早期注册。
 
 ---
 
-## 10. 架构能力映射表
+## 10. `core` 子目录职责
 
-### 10.1 第一档（刚需 8 项）
+| 目录 | 职责 |
+|------|------|
+| **`core/architecture/`** | 状态机、组件、事件总线、对象池、DI、契约、命令、中介者、模块化插件等 **可复用模式与基础设施** |
+| **`core/global_base/`** | **仅**放各类 **通用基类** 与 **抽象基类**：如状态基类、实体基类、UI 基类、自定义 `Node`/`Node2D`/`Control` 基类等。**禁止**放入：业务枚举、业务常量、具体业务逻辑、关卡/数值脚本；枚举与常量归 **`scripts/common/`**，玩法逻辑归 **`scripts/game/`**。 |
+
+### 10.1 `utilities`：`extensions` 与 `helpers` 分离
+
+| 目录 | 职责 |
+|------|------|
+| **`utilities/extensions/`** | 对 **Godot / C# 引擎原生类型** 的扩展方法或薄封装（如 `Vector2`、`Node`、`string` 的链式扩展）。 |
+| **`utilities/helpers/`** | **与引擎类型无绑定**的纯工具：数学、字符串、随机、格式化、集合算法等；可含项目内通用纯函数，**不**塞业务状态。 |
+
+---
+
+## 11. `common` 与架构边界
+
+- **`scripts/common/enums/`**、**`constants/`**：仅放 **玩法、关卡、UI 业务域** 的枚举与常量，**不**依赖 `core/architecture` 内具体类（可依赖 Godot 内置类型）。  
+- **`core/architecture/contracts/`**：跨模块 **接口与抽象类型**；业务枚举如需出现在接口签名中，类型定义仍建议在 **`common`**，由 `contracts` 引用。  
+- **禁止**在 `core/architecture` 内堆积关卡名、波次 ID 等业务枚举（迁至 **`common`**）。
+
+---
+
+## 12. 架构能力映射表
+
+### 12.1 第一档（刚需 8 项）
 
 | 能力 | 目录 |
 |------|------|
-| 状态机 | `scripts/core/state_machine/` |
-| 组件化 | `scripts/core/components/` |
-| 事件总线 | `scripts/core/event_bus/` |
+| 状态机 | `scripts/core/architecture/state_machine/` |
+| 组件化 | `scripts/core/architecture/components/` |
+| 事件总线 | `scripts/core/architecture/event_bus/` |
 | 数据与表现分离 | `data/`、`resources/configs/`、`scenes/`、`scripts/game/` |
-| 全局管理器拆分 | `scripts/managers/` + `scripts/autoload/`（装配） |
+| 全局管理器（拆分） | **`scripts/autoload/`**（多单例脚本，一职责一条目） |
 | 配置表驱动 | `data/config_tables/` + `scripts/configuration/runtime/` + `resources/configs/` |
-| 枚举与常量中心化 | `scripts/core/enums_and_constants/` |
-| 适度分层 | `core`（横切能力）+ `game`（业务）+ `bootstrap`（入口），无四层 DDD 目录 |
+| 枚举与常量（业务） | **`scripts/common/enums/`**、**`constants/`** |
+| 适度分层 | `core/architecture` + `core/global_base` + `common` + `game` + `bootstrap` |
 
-### 10.2 第二档（进阶 10 项）
+### 12.2 第二档（进阶 10 项）
 
 | 能力 | 目录 |
 |------|------|
-| 接口契约 | `scripts/core/contracts/` |
-| 对象池 | `scripts/core/object_pool/` |
-| 依赖注入 | `scripts/core/dependency_injection/` + `bootstrap/` |
-| 模块化 / 插件化 | `scripts/core/modular_plugins/` + `addons/plugin_modules/` |
-| 单例职责拆分 | `scripts/managers/`（一文件一职责） |
-| MVC / MVVM | `scripts/presentation_patterns/mvc`、`mvvm` + `scenes/ui/` |
-| 命令模式 | `scripts/core/commands/` |
-| 中介者模式 | `scripts/core/mediators/` |
-| 通用扩展与工具 | `scripts/utilities/extensions/` |
+| 接口契约 | `scripts/core/architecture/contracts/` |
+| 对象池 | `scripts/core/architecture/object_pool/` |
+| 依赖注入 | `scripts/core/architecture/dependency_injection/` + `bootstrap/` |
+| 模块化 / 插件化 | `scripts/core/architecture/modular_plugins/` + `addons/plugin_modules/` |
+| 单例职责拆分 | **`scripts/autoload/`**（禁止单文件承担全部全局职责） |
+| MVC / MVVM | `scripts/presentation_patterns/` + **`scenes/ui/`**（含大型 UI 壳场景） |
+| 命令模式 | `scripts/core/architecture/commands/` |
+| 中介者模式 | `scripts/core/architecture/mediators/` |
+| 扩展与工具 | `scripts/utilities/extensions/`（原生类型扩展）、`scripts/utilities/helpers/`（数学/字符串/随机等纯函数） |
 | 存档版本兼容 | `scripts/persistence/migrations/` + `saves/` |
 
-### 10.3 额外高级（4 项）
+### 12.3 额外高级（4 项）
 
 | 能力 | 目录 |
 |------|------|
-| 资源分包 + 热更新 | `data/pack_manifests/` + `scripts/resources/packs/` + `remote_cache/` |
+| 资源分包 + 热更新 | `data/pack_manifests/` + **`scripts/resource_loader/packs/`** + **`remote_cache/`** |
 | 多语言 | `localization/locales/` + `scripts/localization/` |
 | 全局日志 + 全局异常 | `scripts/debug/` |
 | 配置表热重载 | `scripts/configuration/hot_reload/` |
 
 ---
 
-## 11. 依赖与工程约束
+## 13. 依赖与工程约束
 
-1. **`scripts/autoload/`**：禁止堆积业务；复杂逻辑下放 `game/` 或 `managers/`。  
-2. **跨模块引用**：优先 `contracts` 与事件载荷类型；避免 `game` 子域之间循环引用具体类。  
-3. **`core`**：不依赖具体关卡或 UI 场景路径；可由 `bootstrap` 或 `game` 反向使用 `core`。  
-4. **配置与存档**：变更需兼容策略（表版本字段 + 解析分支；存档 `migrations`）。  
-5. **C#**：程序集名与 `project.godot` 中 `dotnet/project/assembly_name` 一致；公共类型优先放在 `contracts` 与 `enums_and_constants`。
+1. **`scripts/autoload/`**：可含多个轻量全局服务脚本；复杂领域逻辑在 **`scripts/game/`**。  
+2. **跨模块引用**：优先 **`architecture/contracts`** 与事件载荷；业务字面量来自 **`common`**。  
+3. **`core/architecture`**：不依赖具体 `.tscn` 路径；**`core`** 整体不引用 **`game`**。  
+4. **配置与存档**：表版本与存档 `migrations` 策略不变。  
+5. **C#**：程序集名与 `project.godot` 中 `assembly_name` 一致；对外稳定类型在 **`contracts`**，业务枚举在 **`common`**。
 
 ---
 
-## 12. 测试
+## 14. 测试
 
 | 目录 | 用途 |
 |------|------|
-| `tests/unit/` | 纯函数、状态机、配置解析、迁移逻辑单测 |
-| `tests/integration/` | 需场景树或 Autoload 的集成用例、事件总线联调 |
-
-测试工程（GUT、gdUnit4 等）的插件仍放在 **`addons/`**，与本表目录不冲突。
+| `tests/unit/` | 纯逻辑、architecture、configuration、migrations |
+| `tests/integration/` | Autoload、事件总线、场景级联调 |
 
 ---
 
-## 13. 文档维护
+## 15. 文档维护
 
-新增或废弃目录、调整 Autoload 与主场景路径时，必须更新：
-
-- **`docs/ARCHITECTURE.md`**（本文件）  
-- **`PROJECT_STRUCTURE.md`**（速览表）
+更新目录或 Autoload 策略时，同步 **`docs/ARCHITECTURE.md`** 与 **`PROJECT_STRUCTURE.md`**。
 
 ---
 
-*文档版本与仓库目录结构一致；若编辑器缓存中仍出现已废弃路径（如 `scenes/bootstrap`、`resources/definitions`），以本文件 §3 为准并清理残留。*
+*已废弃路径（勿再新增资源）：`scripts/managers/`、`scenes/presentation/`、`assets/3d/materials/`、`scripts/core/enums_and_constants/`（平铺）、`scripts/resources/`（已更名为 **`scripts/resource_loader/`**）。主场景仅使用 **`res://bootstrap/main.tscn`**。*
